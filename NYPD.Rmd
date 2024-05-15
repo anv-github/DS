@@ -1,0 +1,120 @@
+---
+title: NYPD Data Analysis
+output:
+  pdf_document: default
+---
+## Given - Data of every shooting incident in NYC since 2006. Each record includes information such as, location and time of occurence, suspect and victim information.
+
+# Step 1 - Package Installation
+```{r package_load}
+## Install the tidyverse package install.packages("tidyverse")
+
+## Loading the tidyverse library
+library(tidyverse)
+
+## Loading the lubridate library for date
+library(lubridate)
+```
+
+# Step 2 - Import Data
+```{r get_nypd_data}
+url_nypd_data <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+## Load data from url
+nypd_data <- read_csv(url_nypd_data)
+```
+
+# Step 3- Tidy and Transform the data
+
+* Removing columns that are not required for the analysis.
+* Handle null/unknown values in the columns.
+```{r tidy_nypd_data}
+
+## Removing columns that are not required for the analysis
+nypd_data <- nypd_data %>% 
+  select(-c("LOC_CLASSFCTN_DESC", "LOC_OF_OCCUR_DESC", "PRECINCT","LOCATION_DESC","JURISDICTION_CODE",X_COORD_CD:Lon_Lat)) 
+
+summary(nypd_data)
+
+## Check for null values in the columns
+sapply(nypd_data, function(x) sum(is.na(x)))
+
+## Replace null values with Unknown
+nypd_data <- nypd_data %>% replace_na(list(PERP_AGE_GROUP="UNKNOWN", PERP_SEX="UNKNOWN", PERP_RACE="UNKNOWN"))
+
+nypd_data$PERP_SEX <- recode(nypd_data$PERP_SEX, U="UNKNOWN")
+nypd_data$VIC_SEX <- recode(nypd_data$VIC_SEX, U="UNKNOWN")
+
+nypd_data$BORO <- as.factor(nypd_data$BORO)
+nypd_data$PERP_AGE_GROUP <- as.factor(nypd_data$PERP_AGE_GROUP)
+nypd_data$PERP_SEX <- as.factor(nypd_data$PERP_SEX)
+nypd_data$PERP_RACE <- as.factor(nypd_data$PERP_RACE)
+nypd_data$VIC_AGE_GROUP <- as.factor(nypd_data$VIC_AGE_GROUP)
+nypd_data$VIC_SEX <- as.factor(nypd_data$VIC_SEX)
+nypd_data$VIC_RACE <- as.factor(nypd_data$VIC_RACE)
+
+summary(nypd_data)
+
+```
+ 
+# Step 4 - Visualize
+
+1. Which Boro has the highest number of murders?
+```{r visualize}
+
+murder_data <- nypd_data %>% 
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  group_by(BORO) %>%
+  mutate(count_per_boro = sum(STATISTICAL_MURDER_FLAG))
+
+murder_data %>%
+  ggplot(aes(x = BORO)) +
+  geom_bar(fill="darkred") +
+  labs(title = "Murder Incidents in New York", x = "Boro", y = "Incidents")
+```
+
+Analysis - The bar graph gives us a view of the Boro that has the highest number of murders in NewYork city. Brooklyn has the highest followed by Bronx.
+
+2. How has the crime rate changed across years in Brooklyn?
+```{r visualize_2}
+Brooklyn_incidents <- nypd_data %>%
+  filter(BORO=="BROOKLYN") %>%
+  mutate(year = year(mdy(OCCUR_DATE))) %>%
+  group_by(year) %>%
+  mutate(cases_per_year = sum(STATISTICAL_MURDER_FLAG)) %>%
+  select(year, cases_per_year)
+
+Brooklyn_incidents %>%
+  ggplot(aes(x= year)) +
+  geom_line(aes(y=cases_per_year), color = "red") +
+  labs(title = "Trend in Brooklyn ", x = "Year", y = "Incidents")
+  
+```
+Analysis - The trends of crime show a dip in the years 2010 to 2017. But there is a sudden spike again in the year 2020. This might be due to other reasons such as - covid outbreak, political changes. To get an exact idea of the reason for this spike we have to investigate data related to other factors as well. 
+
+3. Which age group was the most affected by these crimes?
+```{r visualize_3}
+nypd_data %>%
+  filter(VIC_AGE_GROUP!=1022) %>%
+  ggplot(aes(x=VIC_AGE_GROUP, fill= VIC_SEX)) + 
+  labs(x = " Victim Age Group ",title="Victims Age Group")+
+  geom_bar(position='stack')+
+  scale_fill_manual(values=c('lightyellow','lightblue','grey'))
+```
+
+Analysis - It can be noted that 25-44 followed by 18-24 age groups have the largest number of victims. Also it can be seen that most of the victims in any age groups are men.
+
+# Step 5 - Model creation
+```{r model}
+model <- lm(STATISTICAL_MURDER_FLAG ~   PERP_RACE + VIC_RACE + VIC_SEX + VIC_AGE_GROUP, data= nypd_data )
+summary(model)
+```
+
+# Step 6 - Bias
+
+From the above visualization and analysis done it can be noted that most of the victims are men. So there is a possibility that women have not reported their crimes. In order to get accurate results other factors should also be considered such as impact of covid, any political changes or change in the job market. This might be the possible bias in data. On a personal level, while analysing the data, the higher crime rate in a particular region has intrigued me to do a further analysis on that Boro. But this could have been looked at a different way and have analysed the crime rates between boros in New York to get more insights.
+
+# Conclusion
+
+To conclude, Brooklyn had the most number of murders, followed by Bronx. The number of male victims is significantly larger than the female victims. And the age groups that are most affected fall between 18-44, which are most likely salaried persons. Therefore, it is suggested for people living in these areas, in this age group to be cautious.
+ 
